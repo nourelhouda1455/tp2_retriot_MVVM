@@ -1,0 +1,23 @@
+1.Pourquoi les données de la liste ne sont-elles pas perdues lors d'une rotation de l'écran ?
+
+Réponse : Les données sont conservées dans le ViewModel, qui survit aux changements de configuration (comme la rotation de l'écran) contrairement à l'interface graphique (Activity/Compose) qui est détruite et recréée.
+
+2.Pourquoi _uiState est-il privé et modifiable, alors que uiState est public et en lecture seule ?
+
+Réponse : C'est le principe d'encapsulation et du flux unidirectionnel (UDF). Seul le ViewModel a le droit de modifier l'état (via _uiState), tandis que l'interface (UI) y accède en lecture seule (uiState) pour l'afficher sans risquer de le corrompre accidentellement.
+
+3.Quelle est la différence entre un état (StateFlow) et un événement (SharedFlow) ? Donnez un exemple de chaque dans ce TP.
+
+Réponse : Un StateFlow conserve toujours une valeur active (il représente l'état permanent, comme la liste des patients). Un SharedFlow transmet des signaux ponctuels sans les retenir (il représente un événement unique qui ne doit pas se répéter, comme un message Snackbar "Patient ajouté").
+
+4.Que se passerait-il si la classe Patient contient val age: Int (non nullable) et que l'API renvoie un patient sans âge ?
+
+Réponse : Cela provoquerait une exception de désérialisation (SerializationException) car le champ requis est absent ou null dans le JSON, ce qui ferait planter l'affichage de l'écran avec une erreur inattendue.
+
+5.Distinguez HttpException et IOException : laquelle obtient-on si le serveur est arrêté ? si le patient n'existe pas ?
+
+Réponse : Si le serveur est arrêté, on obtient une IOException (le client ne parvient pas à joindre le réseau/serveur). Si le patient n'existe pas (erreur 404), on obtient une HttpException (le serveur a répondu, mais avec un code d'erreur HTTP).
+
+6.Si l'on remplaçait l'API par une base Room, quels fichiers faudrait-il modifier ? Lesquels resteraient identiques ?
+
+Réponse : Il faudrait modifier la source de données (remplacer Retrofit par Room @Dao et @Entity) et adapter légèrement le Repository. En revanche, le ViewModel et l'UI (Compose) resteraient strictement identiques grâce à l'architecture en couches de MVVM.
