@@ -1,6 +1,6 @@
-
 package com.example.patients.ui.patients
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,27 +13,44 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.patients.data.model.Patient
+import com.example.patients.data.model.PatientRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +60,17 @@ fun PatientsScreen(
     )
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentStatut by viewModel.selectedStatut.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var patientEnCoursDeModification by remember { mutableStateOf<Patient?>(null) }
+
+    // Collect messages for the Snackbar[cite: 2]
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect {
+            snackbarHostState.showSnackbar(it)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -59,33 +87,92 @@ fun PatientsScreen(
                     }
                 }
             )
-        }
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAddDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Ajouter")
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (val state = uiState) {
-                is PatientsUiState.Loading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
+            // Exercise 2: Filter Chips for Status Selection
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = currentStatut == null,
+                    onClick = { viewModel.setStatutFilter(null) },
+                    label = { Text("Tous") }
+                )
+                FilterChip(
+                    selected = currentStatut == "Actif",
+                    onClick = { viewModel.setStatutFilter("Actif") },
+                    label = { Text("Actif") }
+                )
+                FilterChip(
+                    selected = currentStatut == "Inactif",
+                    onClick = { viewModel.setStatutFilter("Inactif") },
+                    label = { Text("Inactif") }
+                )
+            }
 
-                is PatientsUiState.Error -> {
-                    ErrorContent(
-                        message = state.message,
-                        onRetry = { viewModel.loadPatients() },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (val state = uiState) {
+                    is PatientsUiState.Loading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
 
-                is PatientsUiState.Success -> {
-                    PatientList(patients = state.patients)
+                    is PatientsUiState.Error -> {
+                        ErrorContent(
+                            message = state.message,
+                            onRetry = { viewModel.loadPatients() },
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+
+                    is PatientsUiState.Success -> {
+                        PatientList(
+                            patients = state.patients,
+                            onItemClick = { patientEnCoursDeModification = it },
+                            onDelete = { viewModel.deletePatient(it) }
+                        )
+                    }
                 }
             }
         }
+    }
+
+    // Show Add Dialog
+    if (showAddDialog) {
+        AddPatientDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { request ->
+                viewModel.addPatient(request)
+                showAddDialog = false
+            }
+        )
+    }
+
+    // Show Edit Dialog (Exercise 1)
+    patientEnCoursDeModification?.let { patient ->
+        AddPatientDialog(
+            patientToEdit = patient,
+            onDismiss = { patientEnCoursDeModification = null },
+            onConfirm = { request ->
+                viewModel.updatePatient(patient.id, request)
+                patientEnCoursDeModification = null
+            }
+        )
     }
 }
 
@@ -108,36 +195,47 @@ fun ErrorContent(
 }
 
 @Composable
-fun PatientList(patients: List<Patient>) {
+fun PatientList(
+    patients: List<Patient>,
+    onItemClick: (Patient) -> Unit,
+    onDelete: (Patient) -> Unit
+) {
     if (patients.isEmpty()) {
-        Text("Aucun patient", Modifier.padding(24.dp))
+        Text("Aucun patient", modifier = Modifier.padding(24.dp))
     } else {
         LazyColumn(
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(patients, key = { it.id }) { patient ->
-                PatientCard(patient)
+                PatientCard(
+                    patient = patient,
+                    onClick = { onItemClick(patient) },
+                    onDelete = { onDelete(patient) }
+                )
             }
         }
     }
 }
 
 @Composable
-fun PatientCard(patient: Patient) {
-    Card(Modifier.fillMaxWidth()) {
+fun PatientCard(patient: Patient, onClick: () -> Unit, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
         Row(
-            Modifier.padding(16.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "${patient.prenom} ${patient.nom}",
+                    text = "${patient.prenom} ${patient.nom}",
                     style = MaterialTheme.typography.titleMedium
                 )
-
                 Text(
-                    listOfNotNull(
+                    text = listOfNotNull(
                         patient.age?.let { "$it ans" },
                         patient.medecin,
                         patient.statut
@@ -145,6 +243,78 @@ fun PatientCard(patient: Patient) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Supprimer")
+            }
         }
     }
+}
+
+@Composable
+fun AddPatientDialog(
+    patientToEdit: Patient? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (PatientRequest) -> Unit
+) {
+    var nom by rememberSaveable { mutableStateOf(patientToEdit?.nom ?: "") }
+    var prenom by rememberSaveable { mutableStateOf(patientToEdit?.prenom ?: "") }
+    var age by rememberSaveable { mutableStateOf(patientToEdit?.age?.toString() ?: "") }
+    var medecin by rememberSaveable { mutableStateOf(patientToEdit?.medecin ?: "") }
+    val formulaireValide = nom.isNotBlank() && prenom.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (patientToEdit == null) "Nouveau patient" else "Modifier le patient") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = nom,
+                    onValueChange = { nom = it },
+                    label = { Text("Nom *") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = prenom,
+                    onValueChange = { prenom = it },
+                    label = { Text("Prénom *") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = age,
+                    onValueChange = { age = it.filter { c -> c.isDigit() } },
+                    label = { Text("Âge") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = medecin,
+                    onValueChange = { medecin = it },
+                    label = { Text("Médecin") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = formulaireValide,
+                onClick = {
+                    onConfirm(
+                        PatientRequest(
+                            nom = nom.trim(),
+                            prenom = prenom.trim(),
+                            age = age.toIntOrNull(),
+                            medecin = medecin.trim().ifBlank { null }
+                        )
+                    )
+                }
+            ) {
+                Text("Enregistrer")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Annuler")
+            }
+        }
+    )
 }
