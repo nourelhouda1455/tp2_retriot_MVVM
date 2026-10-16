@@ -1,6 +1,8 @@
 package com.example.patients.data.repository
 
 import com.example.patients.data.model.ApiError
+import com.example.patients.data.model.Consultation          // <--- Added missing import
+import com.example.patients.data.model.ConsultationRequest     // <--- Added missing import
 import com.example.patients.data.model.Patient
 import com.example.patients.data.model.PatientRequest
 import com.example.patients.data.remote.PatientApi
@@ -29,6 +31,19 @@ class PatientRepository(
 
     suspend fun deletePatient(id: String): Result<Unit> = safeCall {
         val response = api.deletePatient(id)
+        if (!response.isSuccessful) throw HttpException(response)
+    }
+
+    suspend fun getConsultations(patientId: String? = null): Result<List<Consultation>> = safeCall {
+        api.getConsultations(patientId = patientId)
+    }
+
+    suspend fun createConsultation(request: ConsultationRequest): Result<Consultation> = safeCall {
+        api.createConsultation(request)
+    }
+
+    suspend fun deleteConsultation(id: String): Result<Unit> = safeCall {
+        val response = api.deleteConsultation(id)
         if (!response.isSuccessful) throw HttpException(response)
     }
 

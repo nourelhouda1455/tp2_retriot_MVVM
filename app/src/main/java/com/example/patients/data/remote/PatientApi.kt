@@ -11,7 +11,8 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
-
+import com.example.patients.data.model.Consultation
+import com.example.patients.data.model.ConsultationRequest
 interface PatientApi {
 
     @GET("patients")
@@ -39,4 +40,13 @@ interface PatientApi {
     suspend fun deletePatient(
         @Path("id") id: String
     ): Response<Unit>
+
+    @GET("consultations")
+    suspend fun getConsultations(@Query("patient") patientId: String? = null, @Query("statut") statut: String? = null): List<Consultation>
+
+    @POST("consultations")
+    suspend fun createConsultation(@Body consultation: ConsultationRequest): Consultation
+
+    @DELETE("consultations/{id}")
+    suspend fun deleteConsultation(@Path("id") id: String): Response<Unit>
 }

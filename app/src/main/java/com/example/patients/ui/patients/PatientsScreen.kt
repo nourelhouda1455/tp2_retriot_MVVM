@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -35,6 +36,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox // <-- Import PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +57,7 @@ import com.example.patients.data.model.PatientRequest
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PatientsScreen(
+    onNavigateToConsultations: (Patient) -> Unit = {},
     viewModel: PatientViewModel = viewModel(
         factory = PatientViewModel.Factory
     )
@@ -65,12 +68,15 @@ fun PatientsScreen(
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var patientEnCoursDeModification by remember { mutableStateOf<Patient?>(null) }
 
-    // Collect messages for the Snackbar[cite: 2]
+    // Collect messages for the Snackbar
     LaunchedEffect(Unit) {
         viewModel.messages.collect {
             snackbarHostState.showSnackbar(it)
         }
     }
+
+    // Track whether the refresh indicator is spinning
+    val isRefreshing = uiState is PatientsUiState.Loading
 
     Scaffold(
         topBar = {
@@ -100,7 +106,7 @@ fun PatientsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Exercise 2: Filter Chips for Status Selection
+            // Filter Chips for Status Selection
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -124,28 +130,37 @@ fun PatientsScreen(
                 )
             }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                when (val state = uiState) {
-                    is PatientsUiState.Loading -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
+            // PullToRefreshBox wrapping the content container
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.loadPatients() },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (val state = uiState) {
+                        is PatientsUiState.Loading -> {
+                            // Only show center loader if list is completely empty
+                            if (state !is PatientsUiState.Success) {
+                                // optional center indicator
+                            }
+                        }
 
-                    is PatientsUiState.Error -> {
-                        ErrorContent(
-                            message = state.message,
-                            onRetry = { viewModel.loadPatients() },
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
+                        is PatientsUiState.Error -> {
+                            ErrorContent(
+                                message = state.message,
+                                onRetry = { viewModel.loadPatients() },
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
 
-                    is PatientsUiState.Success -> {
-                        PatientList(
-                            patients = state.patients,
-                            onItemClick = { patientEnCoursDeModification = it },
-                            onDelete = { viewModel.deletePatient(it) }
-                        )
+                        is PatientsUiState.Success -> {
+                            PatientList(
+                                patients = state.patients,
+                                onItemClick = { patientEnCoursDeModification = it },
+                                onConsultationsClick = { onNavigateToConsultations(it) },
+                                onDelete = { viewModel.deletePatient(it) }
+                            )
+                        }
                     }
                 }
             }
@@ -163,7 +178,7 @@ fun PatientsScreen(
         )
     }
 
-    // Show Edit Dialog (Exercise 1)
+    // Show Edit Dialog
     patientEnCoursDeModification?.let { patient ->
         AddPatientDialog(
             patientToEdit = patient,
@@ -198,12 +213,16 @@ fun ErrorContent(
 fun PatientList(
     patients: List<Patient>,
     onItemClick: (Patient) -> Unit,
+    onConsultationsClick: (Patient) -> Unit,
     onDelete: (Patient) -> Unit
 ) {
     if (patients.isEmpty()) {
-        Text("Aucun patient", modifier = Modifier.padding(24.dp))
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Aucun patient", modifier = Modifier.padding(24.dp))
+        }
     } else {
         LazyColumn(
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -211,6 +230,7 @@ fun PatientList(
                 PatientCard(
                     patient = patient,
                     onClick = { onItemClick(patient) },
+                    onConsultationsClick = { onConsultationsClick(patient) },
                     onDelete = { onDelete(patient) }
                 )
             }
@@ -219,7 +239,12 @@ fun PatientList(
 }
 
 @Composable
-fun PatientCard(patient: Patient, onClick: () -> Unit, onDelete: () -> Unit) {
+fun PatientCard(
+    patient: Patient,
+    onClick: () -> Unit,
+    onConsultationsClick: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -243,6 +268,11 @@ fun PatientCard(patient: Patient, onClick: () -> Unit, onDelete: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+
+            IconButton(onClick = onConsultationsClick) {
+                Icon(Icons.Default.DateRange, contentDescription = "Consultations")
+            }
+
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Supprimer")
             }
